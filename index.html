@@ -3,141 +3,199 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Participate Crous Today</title>
+  <title>Restaurant Check-in</title>
   <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
     body {
-      font-family: 'Arial', sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Helvetica, Arial, sans-serif;
+      background: #f2f2f7;
+      color: #1c1c1e;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 48px 16px 64px;
+    }
+
+    /* ── Header ── */
+    header {
       text-align: center;
-      padding: 20px;
-      background-color: #f5f5f5;
-      color: #333;
+      margin-bottom: 32px;
     }
-    h1 {
-      font-size: 2em;
-      margin-bottom: 10px;
+    header h1 {
+      font-size: clamp(1.4rem, 4vw, 1.75rem);
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: #1c1c1e;
     }
-    #date {
-      font-size: 1.5em;
-      margin-bottom: 20px;
-      color: #888;
+    header #date {
+      margin-top: 4px;
+      font-size: 0.95rem;
+      color: #8e8e93;
+      font-weight: 400;
     }
+
+    /* ── Card ── */
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      width: 100%;
+      max-width: 480px;
+      overflow: hidden;
+    }
+
+    /* ── Meet-up row ── */
     #meetupSection {
-      margin-bottom: 20px;
-      background-color: #fff;
-      display: inline-block;
-      padding: 14px 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 18px;
+      border-bottom: 1px solid #e5e5ea;
     }
-    #meetupSection p {
-      margin: 0 0 10px 0;
-      font-size: 1.1em;
-      font-weight: bold;
-      color: #555;
+    #meetupLabel {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #8e8e93;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     #meetupDisplay {
-      font-size: 1.3em;
-      color: #333;
-      margin-bottom: 10px;
-      min-height: 1.4em;
-      font-style: italic;
+      flex: 1;
+      font-size: 0.95rem;
+      font-weight: 500;
+      color: #1c1c1e;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    #meetupDisplay.placeholder {
+      color: #8e8e93;
+      font-weight: 400;
     }
     #meetupInput {
-      padding: 8px;
-      width: 200px;
-      font-size: 1em;
-      border-radius: 5px;
-      border: 1px solid #ccc;
-    }
-    #meetupButton {
-      padding: 8px 14px;
-      font-size: 1em;
-      margin-left: 8px;
-      cursor: pointer;
-      border-radius: 5px;
-      background-color: #2196F3;
-      color: white;
+      flex: 1;
+      font-size: 0.95rem;
+      font-family: inherit;
+      color: #1c1c1e;
       border: none;
+      outline: none;
+      background: transparent;
+      display: none;
+      min-width: 0;
     }
-    #meetupButton:hover {
-      background-color: #1976D2;
+    #meetupSection.editing #meetupDisplay { display: none; }
+    #meetupSection.editing #meetupInput  { display: block; }
+    #meetupEdit, #meetupSave {
+      flex-shrink: 0;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: #007aff;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px 0;
     }
+    #meetupSave { display: none; }
+    #meetupSection.editing #meetupEdit { display: none; }
+    #meetupSection.editing #meetupSave { display: inline; }
+
+    /* ── Name form ── */
     #formContainer {
-      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      padding: 0;
     }
     #nameInput {
-      padding: 10px;
-      width: 250px;
-      font-size: 1em;
-      border-radius: 5px;
-      border: 1px solid #ccc;
-    }
-    #submitButton {
-      padding: 10px 15px;
-      font-size: 1em;
-      margin-left: 10px;
-      cursor: pointer;
-      border-radius: 5px;
-      background-color: #4CAF50;
-      color: white;
+      flex: 1;
+      font-size: 1rem;
+      font-family: inherit;
+      color: #1c1c1e;
+      padding: 14px 18px;
       border: none;
+      outline: none;
+      background: transparent;
+      min-width: 0;
     }
-    #submitButton:hover {
-      background-color: #45a049;
+    #nameInput::placeholder { color: #c7c7cc; }
+    #submitButton {
+      flex-shrink: 0;
+      padding: 14px 18px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      font-family: inherit;
+      color: #007aff;
+      background: none;
+      border: none;
+      cursor: pointer;
     }
-    ul {
-      list-style-type: none;
-      padding: 0;
-      margin-top: 20px;
+    #submitButton:active { opacity: 0.7; }
+
+    /* ── Participant list ── */
+    #nameList {
+      list-style: none;
+      width: 100%;
+      max-width: 480px;
+      margin-top: 12px;
     }
-    li {
-      margin: 10px 0;
-      font-size: 1.2em;
+    #nameList li {
       display: flex;
-      justify-content: space-between;
       align-items: center;
-      background-color: #fff;
-      padding: 10px;
-      border-radius: 5px;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      justify-content: space-between;
+      background: #fff;
+      border-radius: 14px;
+      padding: 14px 18px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+      font-size: 0.95rem;
+      font-weight: 500;
     }
     .remove-button {
-      background-color: red;
-      color: white;
-      padding: 6px 12px;
-      font-size: 0.9em;
+      font-size: 0.8rem;
+      font-weight: 600;
+      font-family: inherit;
+      color: #ff3b30;
+      background: none;
       border: none;
-      border-radius: 5px;
       cursor: pointer;
-      transition: background-color 0.3s;
+      padding: 2px 0;
+      flex-shrink: 0;
     }
-    .remove-button:hover {
-      background-color: #d32f2f;
-    }
-    .remove-button:focus {
-      outline: none;
+    .remove-button:active { opacity: 0.7; }
+
+    /* ── Responsive tweaks ── */
+    @media (max-width: 360px) {
+      body { padding: 32px 12px 48px; }
+      header h1 { font-size: 1.3rem; }
     }
   </style>
 </head>
 <body>
-  <h1>Participate in the Student Restaurant Today</h1>
-  <div id="date"></div>
+  <header>
+    <h1>Student Restaurant</h1>
+    <div id="date"></div>
+  </header>
 
-  <div id="meetupSection">
-    <p>Meet-up time</p>
-    <div id="meetupDisplay">—</div>
-    <input type="text" id="meetupInput" placeholder="e.g. 11:10, midi, cancelled">
-    <button id="meetupButton">Save</button>
+  <div class="card">
+    <div id="meetupSection">
+      <span id="meetupLabel">Meet-up</span>
+      <span id="meetupDisplay" class="placeholder">Please set a time</span>
+      <input type="text" id="meetupInput" aria-label="Meet-up time" autocomplete="off">
+      <button id="meetupEdit">Edit</button>
+      <button id="meetupSave">Save</button>
+    </div>
+
+    <div id="formContainer">
+      <input type="text" id="nameInput" placeholder="Your name" aria-label="Your name" autocomplete="off">
+      <button id="submitButton">Join</button>
+    </div>
   </div>
 
-  <div id="formContainer">
-    <input type="text" id="nameInput" placeholder="Enter your name">
-    <button id="submitButton">Enter</button>
-  </div>
   <ul id="nameList"></ul>
 
   <script type="module">
-    // Import necessary Firebase components
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
     import { getDatabase, ref, push, onChildAdded, onChildRemoved, remove, set, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
@@ -152,75 +210,86 @@
       databaseURL: "https://restaurant-cran-default-rtdb.europe-west1.firebasedatabase.app"
     };
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const database = getDatabase(app);
-    const today = new Date().toISOString().split('T')[0]; // Today's date
-    const dateElement = document.getElementById('date');
-    dateElement.textContent = today;
+    const today = new Date().toISOString().split('T')[0];
 
-    const nameInput = document.getElementById('nameInput');
-    const nameList = document.getElementById('nameList');
+    // Date display
+    document.getElementById('date').textContent = new Date().toLocaleDateString(undefined, {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+
+    const nameInput    = document.getElementById('nameInput');
+    const nameList     = document.getElementById('nameList');
     const submitButton = document.getElementById('submitButton');
-    
-    const listRef = ref(database, 'restaurant-checkin/' + today);
+    const listRef      = ref(database, 'restaurant-checkin/' + today);
 
-    // Meet-up time
-    const meetupRef = ref(database, 'restaurant-meetuptime/' + today);
+    // ── Meet-up time ──
+    const meetupRef     = ref(database, 'restaurant-meetuptime/' + today);
+    const meetupSection = document.getElementById('meetupSection');
     const meetupDisplay = document.getElementById('meetupDisplay');
-    const meetupInput = document.getElementById('meetupInput');
-    const meetupButton = document.getElementById('meetupButton');
+    const meetupInput   = document.getElementById('meetupInput');
+    const meetupEdit    = document.getElementById('meetupEdit');
+    const meetupSave    = document.getElementById('meetupSave');
 
     onValue(meetupRef, (snapshot) => {
       const val = snapshot.val();
-      meetupDisplay.textContent = val ? val : '—';
-    });
-
-    meetupButton.addEventListener('click', () => {
-      const time = meetupInput.value.trim();
-      if (time) {
-        set(meetupRef, time)
-          .then(() => { meetupInput.value = ''; })
-          .catch(() => { alert('Failed to save meet-up time. Please try again.'); });
+      if (val) {
+        meetupDisplay.textContent = val;
+        meetupDisplay.classList.remove('placeholder');
+      } else {
+        meetupDisplay.textContent = 'Please set a time';
+        meetupDisplay.classList.add('placeholder');
       }
     });
 
-    meetupInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') meetupButton.click();
+    meetupEdit.addEventListener('click', () => {
+      meetupSection.classList.add('editing');
+      // Pre-fill with the current time value so the user can edit rather than retype
+      const current = meetupDisplay.classList.contains('placeholder') ? '' : meetupDisplay.textContent;
+      meetupInput.value = current;
+      meetupInput.focus();
     });
 
-    // Function to add names to the list
+    const saveMeetup = () => {
+      const time = meetupInput.value.trim();
+      if (!time) return; // keep edit mode open if nothing was typed
+      set(meetupRef, time).catch(() => alert('Failed to save meet-up time.'));
+      meetupSection.classList.remove('editing');
+    };
+
+    meetupSave.addEventListener('click', saveMeetup);
+    meetupInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') saveMeetup(); });
+
+    // ── Participant list ──
     const addNameToList = (name, key) => {
       const li = document.createElement('li');
       li.dataset.key = key;
-      li.textContent = name;
+
+      const span = document.createElement('span');
+      span.textContent = name;
 
       const removeBtn = document.createElement('button');
       removeBtn.textContent = 'Remove';
       removeBtn.className = 'remove-button';
-      removeBtn.onclick = () => {
-        const userConfirmed = confirm('Do you want to remove your name?');
-        if (userConfirmed) {
+      removeBtn.addEventListener('click', () => {
+        if (confirm('Remove your name?')) {
           remove(ref(database, 'restaurant-checkin/' + today + '/' + key));
         }
-      };
+      });
 
+      li.appendChild(span);
       li.appendChild(removeBtn);
       nameList.appendChild(li);
     };
 
-    // Listen for new names being added
-    onChildAdded(listRef, (snapshot) => {
-      addNameToList(snapshot.val(), snapshot.key);
-    });
+    onChildAdded(listRef, (snapshot) => addNameToList(snapshot.val(), snapshot.key));
 
-    // Listen for names being removed
     onChildRemoved(listRef, (snapshot) => {
       const li = nameList.querySelector(`li[data-key='${snapshot.key}']`);
       if (li) li.remove();
     });
 
-    // Submit a name
     const submitName = () => {
       const name = nameInput.value.trim();
       if (name) {
@@ -230,11 +299,7 @@
     };
 
     submitButton.addEventListener('click', submitName);
-    nameInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        submitName();
-      }
-    });
+    nameInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') submitName(); });
   </script>
 </body>
 </html>
