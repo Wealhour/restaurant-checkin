@@ -46,61 +46,6 @@
       overflow: hidden;
     }
 
-    /* ── Meet-up row ── */
-    #meetupSection {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 14px 18px;
-      border-bottom: 1px solid #e5e5ea;
-    }
-    #meetupLabel {
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: #8e8e93;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    #meetupDisplay {
-      flex: 1;
-      font-size: 0.95rem;
-      font-weight: 500;
-      color: #1c1c1e;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    #meetupDisplay.placeholder {
-      color: #8e8e93;
-      font-weight: 400;
-    }
-    #meetupInput {
-      flex: 1;
-      font-size: 0.95rem;
-      font-family: inherit;
-      color: #1c1c1e;
-      border: none;
-      outline: none;
-      background: transparent;
-      display: none;
-      min-width: 0;
-    }
-    #meetupSection.editing #meetupDisplay { display: none; }
-    #meetupSection.editing #meetupInput  { display: block; }
-    #meetupEdit, #meetupSave {
-      flex-shrink: 0;
-      font-size: 0.85rem;
-      font-weight: 600;
-      color: #007aff;
-      background: none;
-      border: none;
-      cursor: pointer;
-      padding: 2px 0;
-    }
-    #meetupSave { display: none; }
-    #meetupSection.editing #meetupEdit { display: none; }
-    #meetupSection.editing #meetupSave { display: inline; }
-
     /* ── Name form ── */
     #formContainer {
       display: flex;
@@ -179,14 +124,6 @@
   </header>
 
   <div class="card">
-    <div id="meetupSection">
-      <span id="meetupLabel">Meet-up time</span>
-      <span id="meetupDisplay" class="placeholder">Please set a time</span>
-      <input type="text" id="meetupInput" aria-label="Meet-up time" autocomplete="off">
-      <button id="meetupEdit">Edit</button>
-      <button id="meetupSave">Save</button>
-    </div>
-
     <div id="formContainer">
       <input type="text" id="nameInput" placeholder="Your name" aria-label="Your name" autocomplete="off">
       <button id="submitButton">Join</button>
@@ -197,7 +134,7 @@
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import { getDatabase, ref, push, onChildAdded, onChildRemoved, remove, set, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import { getDatabase, ref, push, onChildAdded, onChildRemoved, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBtUnTFpQgtM8wpPEGrU8ZNVr4CpLKehHU",
@@ -223,43 +160,6 @@
     const nameList     = document.getElementById('nameList');
     const submitButton = document.getElementById('submitButton');
     const listRef      = ref(database, 'restaurant-checkin/' + today);
-
-    // ── Meet-up time ──
-    const meetupRef     = ref(database, 'restaurant-meetuptime/' + today);
-    const meetupSection = document.getElementById('meetupSection');
-    const meetupDisplay = document.getElementById('meetupDisplay');
-    const meetupInput   = document.getElementById('meetupInput');
-    const meetupEdit    = document.getElementById('meetupEdit');
-    const meetupSave    = document.getElementById('meetupSave');
-
-    onValue(meetupRef, (snapshot) => {
-      const val = snapshot.val();
-      if (val) {
-        meetupDisplay.textContent = val;
-        meetupDisplay.classList.remove('placeholder');
-      } else {
-        meetupDisplay.textContent = 'Please set a time';
-        meetupDisplay.classList.add('placeholder');
-      }
-    });
-
-    meetupEdit.addEventListener('click', () => {
-      meetupSection.classList.add('editing');
-      // Pre-fill with the current time value so the user can edit rather than retype
-      const current = meetupDisplay.classList.contains('placeholder') ? '' : meetupDisplay.textContent;
-      meetupInput.value = current;
-      meetupInput.focus();
-    });
-
-    const saveMeetup = () => {
-      const time = meetupInput.value.trim();
-      if (!time) return; // keep edit mode open if nothing was typed
-      set(meetupRef, time).catch(() => alert('Failed to save meet-up time.'));
-      meetupSection.classList.remove('editing');
-    };
-
-    meetupSave.addEventListener('click', saveMeetup);
-    meetupInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') saveMeetup(); });
 
     // ── Participant list ──
     const addNameToList = (name, key) => {
