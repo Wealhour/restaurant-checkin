@@ -21,6 +21,47 @@
       margin-bottom: 20px;
       color: #888;
     }
+    #meetupSection {
+      margin-bottom: 20px;
+      background-color: #fff;
+      display: inline-block;
+      padding: 14px 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+    }
+    #meetupSection p {
+      margin: 0 0 10px 0;
+      font-size: 1.1em;
+      font-weight: bold;
+      color: #555;
+    }
+    #meetupDisplay {
+      font-size: 1.3em;
+      color: #333;
+      margin-bottom: 10px;
+      min-height: 1.4em;
+      font-style: italic;
+    }
+    #meetupInput {
+      padding: 8px;
+      width: 200px;
+      font-size: 1em;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    #meetupButton {
+      padding: 8px 14px;
+      font-size: 1em;
+      margin-left: 8px;
+      cursor: pointer;
+      border-radius: 5px;
+      background-color: #2196F3;
+      color: white;
+      border: none;
+    }
+    #meetupButton:hover {
+      background-color: #1976D2;
+    }
     #formContainer {
       margin-bottom: 20px;
     }
@@ -81,6 +122,14 @@
 <body>
   <h1>Participate in the Student Restaurant Today</h1>
   <div id="date"></div>
+
+  <div id="meetupSection">
+    <p>Meet-up time</p>
+    <div id="meetupDisplay">—</div>
+    <input type="text" id="meetupInput" placeholder="e.g. 11:10, midi, cancelled">
+    <button id="meetupButton">Save</button>
+  </div>
+
   <div id="formContainer">
     <input type="text" id="nameInput" placeholder="Enter your name">
     <button id="submitButton">Enter</button>
@@ -90,7 +139,7 @@
   <script type="module">
     // Import necessary Firebase components
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import { getDatabase, ref, push, onChildAdded, onChildRemoved, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import { getDatabase, ref, push, onChildAdded, onChildRemoved, remove, set, onValue } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
     const firebaseConfig = {
       apiKey: "AIzaSyBtUnTFpQgtM8wpPEGrU8ZNVr4CpLKehHU",
@@ -115,6 +164,30 @@
     const submitButton = document.getElementById('submitButton');
     
     const listRef = ref(database, 'restaurant-checkin/' + today);
+
+    // Meet-up time
+    const meetupRef = ref(database, 'restaurant-meetuptime/' + today);
+    const meetupDisplay = document.getElementById('meetupDisplay');
+    const meetupInput = document.getElementById('meetupInput');
+    const meetupButton = document.getElementById('meetupButton');
+
+    onValue(meetupRef, (snapshot) => {
+      const val = snapshot.val();
+      meetupDisplay.textContent = val ? val : '—';
+    });
+
+    meetupButton.addEventListener('click', () => {
+      const time = meetupInput.value.trim();
+      if (time) {
+        set(meetupRef, time)
+          .then(() => { meetupInput.value = ''; })
+          .catch(() => { alert('Failed to save meet-up time. Please try again.'); });
+      }
+    });
+
+    meetupInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') meetupButton.click();
+    });
 
     // Function to add names to the list
     const addNameToList = (name, key) => {
