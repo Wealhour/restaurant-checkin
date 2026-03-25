@@ -510,10 +510,10 @@
       });
       return candidates;
     };
+    const MENU_SOURCE_CANDIDATES = getMenuSourceCandidates();
 
     const fetchMenuSource = async () => {
-      const sourceCandidates = getMenuSourceCandidates();
-      for (const sourceUrl of sourceCandidates) {
+      for (const sourceUrl of MENU_SOURCE_CANDIDATES) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), MENU_FETCH_TIMEOUT_MILLISECONDS);
         try {
