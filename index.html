@@ -501,16 +501,10 @@
       });
     };
 
-    const getMenuSourceCandidates = () => {
-      const candidates = [...MENU_SOURCE_URLS];
-      MENU_SOURCE_PROXY_BUILDERS.forEach((buildProxyUrl) => {
-        MENU_SOURCE_URLS.forEach((sourceUrl) => {
-          candidates.push(buildProxyUrl(sourceUrl));
-        });
-      });
-      return candidates;
-    };
-    const MENU_SOURCE_CANDIDATES = getMenuSourceCandidates();
+    const MENU_SOURCE_CANDIDATES = [
+      ...MENU_SOURCE_URLS,
+      ...MENU_SOURCE_PROXY_BUILDERS.flatMap((buildProxyUrl) => MENU_SOURCE_URLS.map((sourceUrl) => buildProxyUrl(sourceUrl))),
+    ];
 
     const fetchMenuSource = async () => {
       for (const sourceUrl of MENU_SOURCE_CANDIDATES) {
