@@ -265,9 +265,10 @@
     const MENU_FETCH_TIMEOUT_MILLISECONDS = 10000;
     const MENU_SOURCE_URLS = [
       'https://www.crous-lorraine.fr/restaurant/space-brabois-3/',
-      'https://r.jina.ai/http://www.crous-lorraine.fr/restaurant/space-brabois-3/',
+      'https://www.crous-lorraine.fr/restaurant/space-brabois-3/feed/',
     ];
     const MIN_MENU_ITEM_CHAR_LENGTH = 3;
+    const DEFAULT_MENU_SECTION_NAME = 'Menu du jour';
 
     const weatherIcons = {
       0: '☀️', 1: '🌤️', 2: '🌤️', 3: '☁️',
@@ -455,9 +456,14 @@
       const nonEmptySections = sections.filter((section) => section.items.length > 0);
       if (nonEmptySections.length > 0) return nonEmptySections;
       if (ungroupedItems.length > 0) {
-        return [{ name: 'Menu du jour', items: ungroupedItems }];
+        return [{ name: DEFAULT_MENU_SECTION_NAME, items: ungroupedItems }];
       }
       return [];
+    };
+
+    const getCurrentDayLinesOrAll = (allLines) => {
+      const currentDayLines = getCurrentDaySlice(allLines);
+      return currentDayLines.length > 0 ? currentDayLines : allLines;
     };
 
     const renderMenuUnavailable = (reasonText) => {
@@ -524,8 +530,8 @@
       }
 
       const allLines = parseMenuTextLines(sourceText);
-      const currentDayLines = getCurrentDaySlice(allLines);
-      const sections = getSectionsFromLines(currentDayLines.length > 0 ? currentDayLines : allLines);
+      const linesToParse = getCurrentDayLinesOrAll(allLines);
+      const sections = getSectionsFromLines(linesToParse);
 
       if (sections.length === 0) {
         renderMenuUnavailable('No lunch menu published yet');
