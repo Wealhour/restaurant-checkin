@@ -263,7 +263,10 @@
     const WEATHER_LOCATION = { name: 'Brabois, Nancy', latitude: 48.6937, longitude: 6.1834 };
     const WEATHER_API_URL = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LOCATION.latitude}&longitude=${WEATHER_LOCATION.longitude}&current=temperature_2m,weather_code,is_day&timezone=auto`;
     const MENU_FETCH_TIMEOUT_MILLISECONDS = 10000;
-    const MENU_SOURCE_URL = 'https://www.crous-lorraine.fr/restaurant/space-brabois-3/';
+    const MENU_SOURCE_URLS = [
+      'https://www.crous-lorraine.fr/restaurant/space-brabois-3/',
+      'https://r.jina.ai/http://www.crous-lorraine.fr/restaurant/space-brabois-3/',
+    ];
     const MIN_MENU_ITEM_CHAR_LENGTH = 3;
 
     const weatherIcons = {
@@ -374,7 +377,6 @@
       'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
       'dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'
     ]);
-    const MENU_SECTION_NAMES = ['Salle Tradi Pop', 'Salle Tradi Zen'];
     const MENU_SECTION_PREFIX_PATTERNS = ['salle '];
     const MENU_SECTION_CONTAINS_PATTERNS = ['cafétéria', 'cafeteria'];
     const MENU_SKIP_PATTERNS = ['déjeuner', 'dejeuner', 'menu'];
@@ -424,21 +426,38 @@
       return lines.slice(currentIndex, endIndex);
     };
 
-    const extractSectionItems = (lines, sectionName) => {
-      const sectionIndex = lines.findIndex((line) => normalizeText(line).includes(normalizeText(sectionName)));
-      if (sectionIndex === -1) return [];
+    const getSectionsFromLines = (lines) => {
+      const sections = [];
+      let currentSection = null;
+      const ungroupedItems = [];
 
-      const items = [];
-      for (let i = sectionIndex + 1; i < lines.length; i += 1) {
-        const line = lines[i];
+      lines.forEach((line) => {
         const normalized = normalizeText(line);
-        const startsNewSection = MENU_SECTION_PREFIX_PATTERNS.some((pattern) => normalized.startsWith(pattern))
+        if (!normalized || ALL_WEEKDAY_NAMES.has(normalized)) return;
+
+        const isSectionHeader = MENU_SECTION_PREFIX_PATTERNS.some((pattern) => normalized.startsWith(pattern))
           || MENU_SECTION_CONTAINS_PATTERNS.some((pattern) => normalized.includes(pattern));
-        if (startsNewSection) break;
-        if (MENU_SKIP_PATTERNS.some((pattern) => normalized.includes(pattern))) continue;
-        items.push(line);
+        if (isSectionHeader) {
+          currentSection = { name: line, items: [] };
+          sections.push(currentSection);
+          return;
+        }
+
+        if (MENU_SKIP_PATTERNS.some((pattern) => normalized.includes(pattern))) return;
+        if (line.length <= MIN_MENU_ITEM_CHAR_LENGTH) return;
+        if (currentSection) {
+          currentSection.items.push(line);
+        } else {
+          ungroupedItems.push(line);
+        }
+      });
+
+      const nonEmptySections = sections.filter((section) => section.items.length > 0);
+      if (nonEmptySections.length > 0) return nonEmptySections;
+      if (ungroupedItems.length > 0) {
+        return [{ name: 'Menu du jour', items: ungroupedItems }];
       }
-      return items.filter((line) => line.length > MIN_MENU_ITEM_CHAR_LENGTH);
+      return [];
     };
 
     const renderMenuUnavailable = (reasonText) => {
@@ -473,21 +492,22 @@
     };
 
     const fetchMenuSource = async () => {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), MENU_FETCH_TIMEOUT_MILLISECONDS);
-      try {
-        const response = await fetch(MENU_SOURCE_URL, { signal: controller.signal });
-        if (!response.ok) return null;
-        const text = await response.text();
-        if (text && text.trim().length > 0) return text;
-        return null;
-      } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        console.error(`Failed to fetch menu source from ${MENU_SOURCE_URL}: ${reason}`);
-        return null;
-      } finally {
-        clearTimeout(timeout);
+      for (const sourceUrl of MENU_SOURCE_URLS) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), MENU_FETCH_TIMEOUT_MILLISECONDS);
+        try {
+          const response = await fetch(sourceUrl, { signal: controller.signal });
+          if (!response.ok) continue;
+          const text = await response.text();
+          if (text && text.trim().length > 0) return text;
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          console.error(`Failed to fetch menu source from ${sourceUrl}: ${reason}`);
+        } finally {
+          clearTimeout(timeout);
+        }
       }
+      return null;
     };
 
     (async () => {
@@ -503,10 +523,9 @@
         return;
       }
 
-      const lines = getCurrentDaySlice(parseMenuTextLines(sourceText));
-      const sections = MENU_SECTION_NAMES
-        .map((name) => ({ name, items: extractSectionItems(lines, name) }))
-        .filter((section) => section.items.length > 0);
+      const allLines = parseMenuTextLines(sourceText);
+      const currentDayLines = getCurrentDaySlice(allLines);
+      const sections = getSectionsFromLines(currentDayLines.length > 0 ? currentDayLines : allLines);
 
       if (sections.length === 0) {
         renderMenuUnavailable('No lunch menu published yet');
