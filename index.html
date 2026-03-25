@@ -263,12 +263,15 @@
     const WEATHER_LOCATION = { name: 'Brabois, Nancy', latitude: 48.6937, longitude: 6.1834 };
     const WEATHER_API_URL = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LOCATION.latitude}&longitude=${WEATHER_LOCATION.longitude}&current=temperature_2m,weather_code,is_day&timezone=auto`;
     const MENU_FETCH_TIMEOUT_MILLISECONDS = 6000;
-    const MENU_DISPLAY_NAME = 'CROUS (S)pace Brabois';
+    const MENU_DISPLAY_NAME = 'CROUS Space Brabois';
     const MENU_RESTAURANT_ID = 420;
-    // Keep as an array so we can add additional official sources without changing fetch logic.
-    const MENU_SOURCE_URLS = [
-      'http://webservices-v2.crous-mobile.fr/feed/nancy.metz/externe/crous-nancy.metz.min.json',
+    const MENU_PRIMARY_SOURCE_URL = 'https://webservices-v2.crous-mobile.fr/feed/nancy.metz/externe/crous-nancy.metz.min.json';
+    const MENU_FALLBACK_SOURCE_URLS = [
       'https://www.crous-lorraine.fr/restaurant/space-brabois-3/',
+    ];
+    // Keep fallback page sources as an array so we can add additional official pages without changing fetch logic.
+    const MENU_PAGE_SOURCE_URLS = [
+      ...MENU_FALLBACK_SOURCE_URLS,
     ];
     const MENU_SOURCE_PROXY_BUILDERS = [
       (sourceUrl) => `https://r.jina.ai/${sourceUrl}`,
@@ -394,6 +397,7 @@
 
     const normalizeText = (line) => String(line ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
     const normalizeSectionName = (line) => normalizeText(String(line ?? '').replace(/[^\p{L}\p{N}\s]/gu, ' '));
+    const isStructuredMenuSectionName = (name) => typeof name === 'string' && name.includes('—');
     const getMenuCacheDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
     const getAllowedMenuSectionLabel = (line) => {
       const normalized = normalizeSectionName(line);
@@ -506,9 +510,13 @@
       });
     };
 
-    const MENU_SOURCE_CANDIDATES = [
-      ...MENU_SOURCE_URLS,
-      ...MENU_SOURCE_PROXY_BUILDERS.flatMap((buildProxyUrl) => MENU_SOURCE_URLS.map((sourceUrl) => buildProxyUrl(sourceUrl))),
+    const MENU_PRIMARY_SOURCE_CANDIDATES = [
+      MENU_PRIMARY_SOURCE_URL,
+      ...MENU_SOURCE_PROXY_BUILDERS.map((buildProxyUrl) => buildProxyUrl(MENU_PRIMARY_SOURCE_URL)),
+    ];
+    const MENU_PAGE_SOURCE_CANDIDATES = [
+      ...MENU_PAGE_SOURCE_URLS,
+      ...MENU_SOURCE_PROXY_BUILDERS.flatMap((buildProxyUrl) => MENU_PAGE_SOURCE_URLS.map((sourceUrl) => buildProxyUrl(sourceUrl))),
     ];
 
     const fetchMenuSourceFromUrl = async (sourceUrl) => {
@@ -536,9 +544,12 @@
         if (parsed?.date !== getMenuCacheDate() || !Array.isArray(parsed?.sections)) return [];
         return parsed.sections.filter((section) =>
           typeof section?.name === 'string'
-          && section.name.trim().length > 0
+          && (
+            ALLOWED_MENU_SECTION_LABELS.has(normalizeSectionName(section.name))
+            || isStructuredMenuSectionName(section.name)
+          )
           && Array.isArray(section?.items)
-          && section.items.some((item) => typeof item === 'string' && item.trim().length > MIN_MENU_ITEM_CHAR_LENGTH)
+          && section.items.length > 0
         );
       } catch {
         return [];
@@ -553,12 +564,30 @@
       }
     };
 
+    const fetchFirstMenuSourceFromCandidates = async (candidates) => {
+      if (candidates.length === 0) return null;
+      return new Promise((resolve) => {
+        let completedRequests = 0;
+        let settled = false;
+        candidates.forEach((sourceUrl) => {
+          fetchMenuSourceFromUrl(sourceUrl)
+            .then((text) => {
+              if (settled || !text) return;
+              settled = true;
+              resolve(text);
+            })
+            .finally(() => {
+              completedRequests += 1;
+              if (!settled && completedRequests === candidates.length) resolve(null);
+            });
+        });
+      });
+    };
+
     const fetchMenuSource = async () => {
-      for (const sourceUrl of MENU_SOURCE_CANDIDATES) {
-        const sourceText = await fetchMenuSourceFromUrl(sourceUrl);
-        if (sourceText) return sourceText;
-      }
-      return null;
+      const primarySourceText = await fetchFirstMenuSourceFromCandidates(MENU_PRIMARY_SOURCE_CANDIDATES);
+      if (primarySourceText) return primarySourceText;
+      return fetchFirstMenuSourceFromCandidates(MENU_PAGE_SOURCE_CANDIDATES);
     };
 
     const getStructuredItems = (dish) => {
@@ -573,10 +602,11 @@
         const parsed = JSON.parse(sourceText);
         if (!Array.isArray(parsed?.restaurants)) return [];
 
-        const braboisRestaurant = parsed.restaurants.find((restaurant) =>
-          Number(restaurant?.id) === MENU_RESTAURANT_ID
-          || normalizeText(restaurant?.title).includes('brabois')
-        );
+        const braboisRestaurant = parsed.restaurants.find((restaurant) => {
+          if (Number(restaurant?.id) === MENU_RESTAURANT_ID) return true;
+          const normalizedTitle = normalizeText(restaurant?.title);
+          return normalizedTitle.includes('space') && normalizedTitle.includes('brabois');
+        });
         if (!braboisRestaurant || !Array.isArray(braboisRestaurant?.menus)) return [];
 
         const todayDate = getMenuCacheDate();
@@ -585,11 +615,11 @@
 
         const sections = [];
         todayMenus.forEach((menu) => {
-          const meals = Array.isArray(menu?.meal) ? menu.meal : (Array.isArray(menu?.meals) ? menu.meals : []);
-          meals.forEach((meal) => {
+          const mealEntries = Array.isArray(menu?.meal) ? menu.meal : (Array.isArray(menu?.meals) ? menu.meals : []);
+          mealEntries.forEach((meal) => {
             const mealName = typeof meal?.name === 'string' ? meal.name.trim() : 'Menu';
-            const categories = Array.isArray(meal?.foodcategory) ? meal.foodcategory : (Array.isArray(meal?.plats) ? meal.plats : []);
-            categories.forEach((category) => {
+            const categoryEntries = Array.isArray(meal?.foodcategory) ? meal.foodcategory : (Array.isArray(meal?.plats) ? meal.plats : []);
+            categoryEntries.forEach((category) => {
               const categoryName = typeof category?.name === 'string' ? category.name.trim() : '';
               const sectionName = categoryName ? `${mealName} — ${categoryName}` : mealName;
               const dishEntries = Array.isArray(category?.dishes) ? category.dishes : [];
