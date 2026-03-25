@@ -269,7 +269,7 @@
     ];
     const MENU_SOURCE_PROXY_BUILDERS = [
       (sourceUrl) => `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`,
-      (sourceUrl) => `https://r.jina.ai/http://${sourceUrl.replace(/^https?:\/\//, '')}`,
+      (sourceUrl) => `https://r.jina.ai/${sourceUrl}`,
     ];
     const MIN_MENU_ITEM_CHAR_LENGTH = 3;
     const DEFAULT_MENU_SECTION_NAME = 'Menu du jour';
@@ -507,7 +507,7 @@
         candidates.push(sourceUrl);
         MENU_SOURCE_PROXY_BUILDERS.forEach((buildProxyUrl) => candidates.push(buildProxyUrl(sourceUrl)));
       });
-      return [...new Set(candidates)];
+      return candidates;
     };
 
     const fetchMenuSource = async () => {
