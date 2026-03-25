@@ -267,6 +267,10 @@
       'https://www.crous-lorraine.fr/restaurant/space-brabois-3/',
       'https://www.crous-lorraine.fr/restaurant/space-brabois-3/feed/',
     ];
+    const MENU_SOURCE_PROXY_BUILDERS = [
+      (sourceUrl) => `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`,
+      (sourceUrl) => `https://r.jina.ai/http://${sourceUrl.replace(/^https?:\/\//, '')}`,
+    ];
     const MIN_MENU_ITEM_CHAR_LENGTH = 3;
     const DEFAULT_MENU_SECTION_NAME = 'Menu du jour';
 
@@ -497,8 +501,18 @@
       });
     };
 
+    const getMenuSourceCandidates = () => {
+      const candidates = [];
+      MENU_SOURCE_URLS.forEach((sourceUrl) => {
+        candidates.push(sourceUrl);
+        MENU_SOURCE_PROXY_BUILDERS.forEach((buildProxyUrl) => candidates.push(buildProxyUrl(sourceUrl)));
+      });
+      return [...new Set(candidates)];
+    };
+
     const fetchMenuSource = async () => {
-      for (const sourceUrl of MENU_SOURCE_URLS) {
+      const sourceCandidates = getMenuSourceCandidates();
+      for (const sourceUrl of sourceCandidates) {
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), MENU_FETCH_TIMEOUT_MILLISECONDS);
         try {
