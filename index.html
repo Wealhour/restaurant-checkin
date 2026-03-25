@@ -133,6 +133,49 @@
     }
     .remove-button:active { opacity: 0.7; }
 
+    /* ── Daily menu ── */
+    .menu-card {
+      width: 100%;
+      max-width: 480px;
+      margin-top: 18px;
+      background: #ffffff;
+      border-radius: 14px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      padding: 16px 18px;
+    }
+    .menu-title {
+      font-size: 1rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: #1c1c1e;
+    }
+    .menu-subtitle {
+      font-size: 0.85rem;
+      color: #8e8e93;
+      margin-bottom: 10px;
+    }
+    .menu-section + .menu-section {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #ececf1;
+    }
+    .menu-section h3 {
+      font-size: 0.92rem;
+      margin-bottom: 6px;
+      color: #1c1c1e;
+    }
+    .menu-items {
+      margin-left: 18px;
+      color: #3a3a3c;
+      font-size: 0.9rem;
+      line-height: 1.4;
+    }
+    .menu-items li + li { margin-top: 3px; }
+    .menu-empty {
+      color: #8e8e93;
+      font-size: 0.9rem;
+    }
+
     /* ── Responsive tweaks ── */
     @media (max-width: 360px) {
       body { padding: 32px 12px 48px; }
@@ -179,6 +222,11 @@
   </div>
 
   <ul id="nameList"></ul>
+  <section class="menu-card" aria-live="polite">
+    <h2 class="menu-title">Today’s Lunch Menu</h2>
+    <p id="menuSubtitle" class="menu-subtitle">Loading daily menu...</p>
+    <div id="menuContent" class="menu-empty"></div>
+  </section>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
@@ -214,6 +262,9 @@
     const WEATHER_FETCH_TIMEOUT_MILLISECONDS = 8000; // Abort request quickly to keep the page responsive on slow networks
     const WEATHER_LOCATION = { name: 'Brabois, Nancy', latitude: 48.6937, longitude: 6.1834 };
     const WEATHER_API_URL = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LOCATION.latitude}&longitude=${WEATHER_LOCATION.longitude}&current=temperature_2m,weather_code,is_day&timezone=auto`;
+    const MENU_FETCH_TIMEOUT_MILLISECONDS = 10000;
+    const MENU_SOURCE_URL = 'https://www.crous-lorraine.fr/restaurant/space-brabois-3/';
+    const MIN_MENU_ITEM_CHAR_LENGTH = 3;
 
     const weatherIcons = {
       0: '☀️', 1: '🌤️', 2: '🌤️', 3: '☁️',
@@ -314,6 +365,154 @@
       } finally {
         clearTimeout(timeout);
       }
+    })();
+
+    const menuSubtitle = document.getElementById('menuSubtitle');
+    const menuContent = document.getElementById('menuContent');
+
+    const ALL_WEEKDAY_NAMES = new Set([
+      'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
+      'dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'
+    ]);
+    const MENU_SECTION_NAMES = ['Salle Tradi Pop', 'Salle Tradi Zen'];
+    const MENU_SECTION_PREFIX_PATTERNS = ['salle '];
+    const MENU_SECTION_CONTAINS_PATTERNS = ['cafétéria', 'cafeteria'];
+    const MENU_SKIP_PATTERNS = ['déjeuner', 'dejeuner', 'menu'];
+    const WEEKEND_DAYS = ['saturday', 'sunday'];
+
+    const normalizeText = (line) => String(line ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+
+    const extractTextLines = (source) => source
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map((line) => line
+        .replace(/\u00a0/g, ' ')
+        .trim())
+      .filter(Boolean);
+
+    const parseMenuTextLines = (source) => {
+      const parser = new DOMParser();
+      const parsedDocument = parser.parseFromString(source, 'text/html');
+      parsedDocument.querySelectorAll('script, style, noscript').forEach((element) => element.remove());
+      const rawText = parsedDocument.body ? parsedDocument.body.textContent || '' : '';
+      return extractTextLines(rawText);
+    };
+
+    const getTodayNamesInParis = () => {
+      const now = new Date();
+      const dayEnglish = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'Europe/Paris' }).format(now).toLowerCase();
+      const dayFrench = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', timeZone: 'Europe/Paris' }).format(now).toLowerCase();
+      return { dayEnglish, dayFrench };
+    };
+
+    const getCurrentDaySlice = (lines) => {
+      const { dayEnglish, dayFrench } = getTodayNamesInParis();
+      const currentIndex = lines.findIndex((line) => {
+        const normalized = normalizeText(line);
+        return normalized.includes(dayEnglish) || normalized.includes(dayFrench);
+      });
+      if (currentIndex === -1) return [];
+
+      let endIndex = lines.length;
+      for (let i = currentIndex + 1; i < lines.length; i += 1) {
+        const normalized = normalizeText(lines[i]);
+        if ([...ALL_WEEKDAY_NAMES].some((name) => normalized.includes(name))) {
+          endIndex = i;
+          break;
+        }
+      }
+      return lines.slice(currentIndex, endIndex);
+    };
+
+    const extractSectionItems = (lines, sectionName) => {
+      const sectionIndex = lines.findIndex((line) => normalizeText(line).includes(normalizeText(sectionName)));
+      if (sectionIndex === -1) return [];
+
+      const items = [];
+      for (let i = sectionIndex + 1; i < lines.length; i += 1) {
+        const line = lines[i];
+        const normalized = normalizeText(line);
+        const startsNewSection = MENU_SECTION_PREFIX_PATTERNS.some((pattern) => normalized.startsWith(pattern))
+          || MENU_SECTION_CONTAINS_PATTERNS.some((pattern) => normalized.includes(pattern));
+        if (startsNewSection) break;
+        if (MENU_SKIP_PATTERNS.some((pattern) => normalized.includes(pattern))) continue;
+        items.push(line);
+      }
+      return items.filter((line) => line.length > MIN_MENU_ITEM_CHAR_LENGTH);
+    };
+
+    const renderMenuUnavailable = (reasonText) => {
+      menuSubtitle.textContent = reasonText;
+      menuContent.className = 'menu-empty';
+      menuContent.textContent = 'No available data today.';
+    };
+
+    const renderMenu = (sections) => {
+      menuSubtitle.textContent = 'CROUS Space Brabois 3';
+      menuContent.className = '';
+      menuContent.innerHTML = '';
+
+      sections.forEach((section) => {
+        const container = document.createElement('section');
+        container.className = 'menu-section';
+
+        const title = document.createElement('h3');
+        title.textContent = section.name;
+        container.appendChild(title);
+
+        const list = document.createElement('ul');
+        list.className = 'menu-items';
+        section.items.forEach((item) => {
+          const li = document.createElement('li');
+          li.textContent = item;
+          list.appendChild(li);
+        });
+        container.appendChild(list);
+        menuContent.appendChild(container);
+      });
+    };
+
+    const fetchMenuSource = async () => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), MENU_FETCH_TIMEOUT_MILLISECONDS);
+      try {
+        const response = await fetch(MENU_SOURCE_URL, { signal: controller.signal });
+        if (!response.ok) return null;
+        const text = await response.text();
+        if (text && text.trim().length > 0) return text;
+        return null;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        console.error(`Failed to fetch menu source from ${MENU_SOURCE_URL}: ${reason}`);
+        return null;
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
+
+    (async () => {
+      const { dayEnglish } = getTodayNamesInParis();
+      if (WEEKEND_DAYS.includes(dayEnglish)) {
+        renderMenuUnavailable('Weekend');
+        return;
+      }
+
+      const sourceText = await fetchMenuSource();
+      if (!sourceText) {
+        renderMenuUnavailable('Menu source unavailable');
+        return;
+      }
+
+      const lines = getCurrentDaySlice(parseMenuTextLines(sourceText));
+      const sections = MENU_SECTION_NAMES
+        .map((name) => ({ name, items: extractSectionItems(lines, name) }))
+        .filter((section) => section.items.length > 0);
+
+      if (sections.length === 0) {
+        renderMenuUnavailable('No lunch menu published yet');
+        return;
+      }
+      renderMenu(sections);
     })();
 
     const nameInput    = document.getElementById('nameInput');
