@@ -262,17 +262,16 @@
     const WEATHER_FETCH_TIMEOUT_MILLISECONDS = 8000; // Abort request quickly to keep the page responsive on slow networks
     const WEATHER_LOCATION = { name: 'Brabois, Nancy', latitude: 48.6937, longitude: 6.1834 };
     const WEATHER_API_URL = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LOCATION.latitude}&longitude=${WEATHER_LOCATION.longitude}&current=temperature_2m,weather_code,is_day&timezone=auto`;
-    const MENU_FETCH_TIMEOUT_MILLISECONDS = 10000;
+    const MENU_FETCH_TIMEOUT_MILLISECONDS = 6000;
+    // Keep as an array so we can add additional official sources without changing fetch logic.
     const MENU_SOURCE_URLS = [
       'https://www.crous-lorraine.fr/restaurant/space-brabois-3/',
-      'https://www.crous-lorraine.fr/restaurant/space-brabois-3/feed/',
     ];
     const MENU_SOURCE_PROXY_BUILDERS = [
-      (sourceUrl) => `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`,
       (sourceUrl) => `https://r.jina.ai/${sourceUrl}`,
+      (sourceUrl) => `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`,
     ];
     const MIN_MENU_ITEM_CHAR_LENGTH = 3;
-    const DEFAULT_MENU_SECTION_NAME = 'Menu du jour';
 
     const weatherIcons = {
       0: '☀️', 1: '🌤️', 2: '🌤️', 3: '☁️',
@@ -382,12 +381,24 @@
       'sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday',
       'dimanche', 'lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi'
     ]);
-    const MENU_SECTION_PREFIX_PATTERNS = ['salle '];
-    const MENU_SECTION_CONTAINS_PATTERNS = ['cafétéria', 'cafeteria'];
+    const ALLOWED_MENU_SECTION_LABELS = new Map([
+      ['salle tradi pop', 'Salle Tradi Pop'],
+      ['salle tradi zen', 'Salle Tradi Zen'],
+    ]);
     const MENU_SKIP_PATTERNS = ['déjeuner', 'dejeuner', 'menu'];
     const WEEKEND_DAYS = ['saturday', 'sunday'];
+    const MENU_CACHE_KEY = 'restaurant-checkin-menu-cache-v1';
 
     const normalizeText = (line) => String(line ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const normalizeSectionName = (line) => normalizeText(String(line ?? '').replace(/[^\p{L}\p{N}\s]/gu, ' '));
+    const getMenuCacheDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+    const getAllowedMenuSectionLabel = (line) => {
+      const normalized = normalizeSectionName(line);
+      for (const [sectionName, displayLabel] of ALLOWED_MENU_SECTION_LABELS) {
+        if (normalized.includes(sectionName)) return displayLabel;
+      }
+      return null;
+    };
 
     const extractTextLines = (source) => source
       .replace(/\r/g, '\n')
@@ -434,16 +445,14 @@
     const getSectionsFromLines = (lines) => {
       const sections = [];
       let currentSection = null;
-      const ungroupedItems = [];
 
       lines.forEach((line) => {
         const normalized = normalizeText(line);
         if (!normalized || ALL_WEEKDAY_NAMES.has(normalized)) return;
 
-        const isSectionHeader = MENU_SECTION_PREFIX_PATTERNS.some((pattern) => normalized.startsWith(pattern))
-          || MENU_SECTION_CONTAINS_PATTERNS.some((pattern) => normalized.includes(pattern));
-        if (isSectionHeader) {
-          currentSection = { name: line, items: [] };
+        const allowedSectionLabel = getAllowedMenuSectionLabel(line);
+        if (allowedSectionLabel) {
+          currentSection = { name: allowedSectionLabel, items: [] };
           sections.push(currentSection);
           return;
         }
@@ -452,17 +461,10 @@
         if (line.length <= MIN_MENU_ITEM_CHAR_LENGTH) return;
         if (currentSection) {
           currentSection.items.push(line);
-        } else {
-          ungroupedItems.push(line);
         }
       });
 
-      const nonEmptySections = sections.filter((section) => section.items.length > 0);
-      if (nonEmptySections.length > 0) return nonEmptySections;
-      if (ungroupedItems.length > 0) {
-        return [{ name: DEFAULT_MENU_SECTION_NAME, items: ungroupedItems }];
-      }
-      return [];
+      return sections.filter((section) => section.items.length > 0);
     };
 
     const getCurrentDayLinesOrAll = (allLines) => {
@@ -506,29 +508,78 @@
       ...MENU_SOURCE_PROXY_BUILDERS.flatMap((buildProxyUrl) => MENU_SOURCE_URLS.map((sourceUrl) => buildProxyUrl(sourceUrl))),
     ];
 
-    const fetchMenuSource = async () => {
-      for (const sourceUrl of MENU_SOURCE_CANDIDATES) {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), MENU_FETCH_TIMEOUT_MILLISECONDS);
-        try {
-          const response = await fetch(sourceUrl, { signal: controller.signal });
-          if (!response.ok) continue;
-          const text = await response.text();
-          if (text && text.trim().length > 0) return text;
-        } catch (error) {
-          const reason = error instanceof Error ? error.message : String(error);
-          console.error(`Failed to fetch menu source from ${sourceUrl}: ${reason}`);
-        } finally {
-          clearTimeout(timeout);
-        }
+    const fetchMenuSourceFromUrl = async (sourceUrl) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), MENU_FETCH_TIMEOUT_MILLISECONDS);
+      try {
+        const response = await fetch(sourceUrl, { signal: controller.signal });
+        if (!response.ok) return null;
+        const text = await response.text();
+        return text && text.trim().length > 0 ? text : null;
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        console.error(`Failed to fetch menu source from ${sourceUrl}: ${reason}`);
+        return null;
+      } finally {
+        clearTimeout(timeout);
       }
-      return null;
+    };
+
+    const getCachedMenuSections = () => {
+      try {
+        const cachedValue = localStorage.getItem(MENU_CACHE_KEY);
+        if (!cachedValue) return [];
+        const parsed = JSON.parse(cachedValue);
+        if (parsed?.date !== getMenuCacheDate() || !Array.isArray(parsed?.sections)) return [];
+        return parsed.sections.filter((section) =>
+          typeof section?.name === 'string'
+          && ALLOWED_MENU_SECTION_LABELS.has(normalizeSectionName(section.name))
+          && Array.isArray(section?.items)
+          && section.items.length > 0
+        );
+      } catch {
+        return [];
+      }
+    };
+
+    const cacheMenuSections = (sections) => {
+      try {
+        localStorage.setItem(MENU_CACHE_KEY, JSON.stringify({ date: getMenuCacheDate(), sections }));
+      } catch {
+        // Ignore localStorage failures to keep rendering resilient
+      }
+    };
+
+    const fetchMenuSource = async () => {
+      if (MENU_SOURCE_CANDIDATES.length === 0) return null;
+      return new Promise((resolve) => {
+        let completedRequests = 0;
+        let settled = false;
+        MENU_SOURCE_CANDIDATES.forEach((sourceUrl) => {
+          fetchMenuSourceFromUrl(sourceUrl)
+            .then((text) => {
+              if (settled || !text) return;
+              settled = true;
+              resolve(text);
+            })
+            .finally(() => {
+              completedRequests += 1;
+              if (!settled && completedRequests === MENU_SOURCE_CANDIDATES.length) resolve(null);
+            });
+        });
+      });
     };
 
     (async () => {
       const { dayEnglish } = getTodayNamesInParis();
       if (WEEKEND_DAYS.includes(dayEnglish)) {
         renderMenuUnavailable('Weekend');
+        return;
+      }
+
+      const cachedSections = getCachedMenuSections();
+      if (cachedSections.length > 0) {
+        renderMenu(cachedSections);
         return;
       }
 
@@ -546,6 +597,7 @@
         renderMenuUnavailable('No lunch menu published yet');
         return;
       }
+      cacheMenuSections(sections);
       renderMenu(sections);
     })();
 
