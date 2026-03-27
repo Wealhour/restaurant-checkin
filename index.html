@@ -266,6 +266,7 @@
     const MENU_DISPLAY_NAME = 'CROUS Space Brabois';
     const MENU_RESTAURANT_ID = 420;
     const MENU_PRIMARY_SOURCE_URL = 'https://webservices-v2.crous-mobile.fr/feed/nancy.metz/externe/crous-nancy.metz.min.json';
+    const MENU_PRIMARY_SOURCE_HTTP_URL = 'http://webservices-v2.crous-mobile.fr/feed/nancy.metz/externe/crous-nancy.metz.min.json';
     const MENU_FALLBACK_SOURCE_URLS = [
       'https://www.crous-lorraine.fr/restaurant/space-brabois-3/',
     ];
@@ -510,9 +511,10 @@
       });
     };
 
+    const MENU_PRIMARY_SOURCE_URLS = [MENU_PRIMARY_SOURCE_URL, MENU_PRIMARY_SOURCE_HTTP_URL];
     const MENU_PRIMARY_SOURCE_CANDIDATES = [
-      MENU_PRIMARY_SOURCE_URL,
-      ...MENU_SOURCE_PROXY_BUILDERS.map((buildProxyUrl) => buildProxyUrl(MENU_PRIMARY_SOURCE_URL)),
+      ...MENU_PRIMARY_SOURCE_URLS.filter((sourceUrl) => sourceUrl.startsWith('https://')),
+      ...MENU_PRIMARY_SOURCE_URLS.flatMap((sourceUrl) => MENU_SOURCE_PROXY_BUILDERS.map((buildProxyUrl) => buildProxyUrl(sourceUrl))),
     ];
     const MENU_PAGE_SOURCE_CANDIDATES = [
       ...MENU_PAGE_SOURCE_URLS,
@@ -599,7 +601,10 @@
 
     const parseStructuredMenuSections = (sourceText) => {
       try {
-        const parsed = JSON.parse(sourceText);
+        const sanitizedSourceText = String(sourceText ?? '')
+          .replace(/^\uFEFF/, '')
+          .replace(/[\u0000-\u001F]+/g, '');
+        const parsed = JSON.parse(sanitizedSourceText);
         if (!Array.isArray(parsed?.restaurants)) return [];
 
         const braboisRestaurant = parsed.restaurants.find((restaurant) => {
