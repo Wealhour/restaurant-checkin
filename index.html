@@ -699,6 +699,14 @@
       }
     };
 
+    const parseHtmlMenuSections = (sourceText) => {
+      if (!sourceText) return [];
+      const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(sourceText));
+      return htmlElementSections.length > 0
+        ? htmlElementSections
+        : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(sourceText)));
+    };
+
     (async () => {
       const { dayEnglish } = getTodayNamesInParis();
       if (WEEKEND_DAYS.includes(dayEnglish)) {
@@ -718,23 +726,14 @@
 
       if (sections.length === 0) {
         const pageSourceText = await fetchFirstMenuSourceFromCandidates(MENU_PAGE_SOURCE_CANDIDATES);
-        if (!pageSourceText) {
-          if (!primarySourceText) {
-            renderMenuUnavailable('Menu source unavailable');
-            return;
-          }
-        } else {
-          const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(pageSourceText));
-          sections = htmlElementSections.length > 0
-            ? htmlElementSections
-            : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(pageSourceText)));
+        if (!pageSourceText && !primarySourceText) {
+          renderMenuUnavailable('Menu source unavailable');
+          return;
         }
+        sections = parseHtmlMenuSections(pageSourceText);
 
         if (sections.length === 0 && primarySourceText) {
-          const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(primarySourceText));
-          sections = htmlElementSections.length > 0
-            ? htmlElementSections
-            : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(primarySourceText)));
+          sections = parseHtmlMenuSections(primarySourceText);
         }
       }
 
