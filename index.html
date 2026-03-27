@@ -648,12 +648,6 @@
       });
     };
 
-    const fetchMenuSource = async () => {
-      const primarySourceText = await fetchFirstMenuSourceFromCandidates(MENU_PRIMARY_SOURCE_CANDIDATES);
-      if (primarySourceText) return primarySourceText;
-      return fetchFirstMenuSourceFromCandidates(MENU_PAGE_SOURCE_CANDIDATES);
-    };
-
     const getStructuredItems = (dish) => {
       if (typeof dish?.name === 'string') return [dish.name];
       if (typeof dish === 'string') return [dish];
@@ -705,6 +699,14 @@
       }
     };
 
+    const parseHtmlMenuSections = (sourceText) => {
+      if (!sourceText) return [];
+      const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(sourceText));
+      return htmlElementSections.length > 0
+        ? htmlElementSections
+        : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(sourceText)));
+    };
+
     (async () => {
       const { dayEnglish } = getTodayNamesInParis();
       if (WEEKEND_DAYS.includes(dayEnglish)) {
@@ -718,19 +720,22 @@
         return;
       }
 
-      const sourceText = await fetchMenuSource();
-      if (!sourceText) {
-        renderMenuUnavailable('Menu source unavailable');
-        return;
-      }
-
-      const structuredSections = parseStructuredMenuSections(sourceText);
+      const primarySourceText = await fetchFirstMenuSourceFromCandidates(MENU_PRIMARY_SOURCE_CANDIDATES);
+      const structuredSections = primarySourceText ? parseStructuredMenuSections(primarySourceText) : [];
       let sections = structuredSections;
+
       if (sections.length === 0) {
-        const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(sourceText));
-        sections = htmlElementSections.length > 0
-          ? htmlElementSections
-          : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(sourceText)));
+        const pageSourceText = await fetchFirstMenuSourceFromCandidates(MENU_PAGE_SOURCE_CANDIDATES);
+        if (!primarySourceText && !pageSourceText) {
+          renderMenuUnavailable('Menu source unavailable');
+          return;
+        }
+        sections = pageSourceText ? parseHtmlMenuSections(pageSourceText) : [];
+
+        if (sections.length === 0 && primarySourceText) {
+          // Some proxy responses prepend metadata to the primary feed, making JSON.parse fail while leaving readable lines.
+          sections = parseHtmlMenuSections(primarySourceText);
+        }
       }
 
       if (sections.length === 0) {
