@@ -723,13 +723,12 @@
             renderMenuUnavailable('Menu source unavailable');
             return;
           }
-          renderMenuUnavailable('No lunch menu published yet');
-          return;
+        } else {
+          const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(pageSourceText));
+          sections = htmlElementSections.length > 0
+            ? htmlElementSections
+            : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(pageSourceText)));
         }
-        const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(pageSourceText));
-        sections = htmlElementSections.length > 0
-          ? htmlElementSections
-          : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(pageSourceText)));
       }
 
       if (sections.length === 0) {
