@@ -733,6 +733,7 @@
         sections = parseHtmlMenuSections(pageSourceText);
 
         if (sections.length === 0 && primarySourceText) {
+          // Some proxy responses can wrap the primary feed in non-JSON text while still containing readable menu lines.
           sections = parseHtmlMenuSections(primarySourceText);
         }
       }
