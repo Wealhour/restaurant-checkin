@@ -513,6 +513,7 @@
 
     const MENU_PRIMARY_SOURCE_URLS = [MENU_PRIMARY_SOURCE_URL, MENU_PRIMARY_SOURCE_HTTP_URL];
     const MENU_PRIMARY_SOURCE_CANDIDATES = [
+      // Keep direct requests HTTPS-only to avoid mixed-content blocking on secure pages.
       ...MENU_PRIMARY_SOURCE_URLS.filter((sourceUrl) => sourceUrl.startsWith('https://')),
       ...MENU_PRIMARY_SOURCE_URLS.flatMap((sourceUrl) => MENU_SOURCE_PROXY_BUILDERS.map((buildProxyUrl) => buildProxyUrl(sourceUrl))),
     ];
@@ -603,7 +604,7 @@
       try {
         const sanitizedSourceText = String(sourceText ?? '')
           .replace(/^\uFEFF/, '')
-          .replace(/[\u0000-\u001F]+/g, '');
+          .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, '');
         const parsed = JSON.parse(sanitizedSourceText);
         if (!Array.isArray(parsed?.restaurants)) return [];
 
