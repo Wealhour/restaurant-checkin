@@ -648,12 +648,6 @@
       });
     };
 
-    const fetchMenuSource = async () => {
-      const primarySourceText = await fetchFirstMenuSourceFromCandidates(MENU_PRIMARY_SOURCE_CANDIDATES);
-      if (primarySourceText) return primarySourceText;
-      return fetchFirstMenuSourceFromCandidates(MENU_PAGE_SOURCE_CANDIDATES);
-    };
-
     const getStructuredItems = (dish) => {
       if (typeof dish?.name === 'string') return [dish.name];
       if (typeof dish === 'string') return [dish];
@@ -718,25 +712,31 @@
         return;
       }
 
-      const sourceText = await fetchMenuSource();
-      if (!sourceText) {
-        renderMenuUnavailable('Menu source unavailable');
-        return;
-      }
-
-      const structuredSections = parseStructuredMenuSections(sourceText);
+      const primarySourceText = await fetchFirstMenuSourceFromCandidates(MENU_PRIMARY_SOURCE_CANDIDATES);
+      const structuredSections = primarySourceText ? parseStructuredMenuSections(primarySourceText) : [];
       let sections = structuredSections;
+
       if (sections.length === 0) {
-        const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(sourceText));
+        const pageSourceText = await fetchFirstMenuSourceFromCandidates(MENU_PAGE_SOURCE_CANDIDATES);
+        if (!pageSourceText) {
+          if (!primarySourceText) {
+            renderMenuUnavailable('Menu source unavailable');
+            return;
+          }
+          renderMenuUnavailable('No lunch menu published yet');
+          return;
+        }
+        const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(pageSourceText));
         sections = htmlElementSections.length > 0
           ? htmlElementSections
-          : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(sourceText)));
+          : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(pageSourceText)));
       }
 
       if (sections.length === 0) {
         renderMenuUnavailable('No lunch menu published yet');
         return;
       }
+
       cacheMenuSections(sections);
       renderMenu(sections);
     })();
