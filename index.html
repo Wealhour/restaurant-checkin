@@ -450,6 +450,41 @@
       return lines.slice(currentIndex, endIndex);
     };
 
+    const findTodayAnchorElement = (parsedDocument) => {
+      const { dayEnglish, dayFrench } = getTodayNamesInParis();
+      const todayDayNames = [dayEnglish, dayFrench];
+      return Array.from(parsedDocument.querySelectorAll('h1, h2, h3, h4, h5, h6, strong, b, p, span, div'))
+        .find((element) => {
+          const normalized = normalizeText(element.textContent || '');
+          if (!normalized) return false;
+          return todayDayNames.some((dayName) => normalized === dayName || normalized.startsWith(`${dayName} `));
+        });
+    };
+
+    const getCurrentDayLinesFromHtmlElements = (source) => {
+      const parser = new DOMParser();
+      const parsedDocument = parser.parseFromString(source, 'text/html');
+      parsedDocument.querySelectorAll('script, style, noscript').forEach((element) => element.remove());
+      const todayAnchorElement = findTodayAnchorElement(parsedDocument.body || parsedDocument);
+      if (!todayAnchorElement) return [];
+
+      const lines = [];
+      const pushElementLines = (element) => {
+        extractTextLines(element.textContent || '').forEach((line) => lines.push(line));
+      };
+
+      let siblingElement = todayAnchorElement.nextElementSibling;
+      while (siblingElement) {
+        const normalizedSiblingText = normalizeText(siblingElement.textContent || '');
+        const isAnotherWeekday = [...ALL_WEEKDAY_NAMES].some((dayName) => normalizedSiblingText === dayName || normalizedSiblingText.startsWith(`${dayName} `));
+        if (isAnotherWeekday) break;
+        pushElementLines(siblingElement);
+        siblingElement = siblingElement.nextElementSibling;
+      }
+
+      return lines;
+    };
+
     const getSectionsFromLines = (lines) => {
       const sections = [];
       let currentSection = null;
@@ -664,9 +699,14 @@
       }
 
       const structuredSections = parseStructuredMenuSections(sourceText);
+      const htmlElementSections = structuredSections.length > 0
+        ? []
+        : getSectionsFromLines(getCurrentDayLinesFromHtmlElements(sourceText));
       const sections = structuredSections.length > 0
         ? structuredSections
-        : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(sourceText)));
+        : (htmlElementSections.length > 0
+          ? htmlElementSections
+          : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(sourceText))));
 
       if (sections.length === 0) {
         renderMenuUnavailable('No lunch menu published yet');
