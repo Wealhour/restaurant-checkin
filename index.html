@@ -729,13 +729,19 @@
             ? htmlElementSections
             : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(pageSourceText)));
         }
+
+        if (sections.length === 0 && primarySourceText) {
+          const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(primarySourceText));
+          sections = htmlElementSections.length > 0
+            ? htmlElementSections
+            : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(primarySourceText)));
+        }
       }
 
       if (sections.length === 0) {
         renderMenuUnavailable('No lunch menu published yet');
         return;
       }
-
       cacheMenuSections(sections);
       renderMenu(sections);
     })();
