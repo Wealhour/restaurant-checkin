@@ -726,14 +726,14 @@
 
       if (sections.length === 0) {
         const pageSourceText = await fetchFirstMenuSourceFromCandidates(MENU_PAGE_SOURCE_CANDIDATES);
-        if (!pageSourceText && !primarySourceText) {
+        if (!primarySourceText && !pageSourceText) {
           renderMenuUnavailable('Menu source unavailable');
           return;
         }
-        sections = parseHtmlMenuSections(pageSourceText);
+        sections = pageSourceText ? parseHtmlMenuSections(pageSourceText) : [];
 
         if (sections.length === 0 && primarySourceText) {
-          // Some proxy responses can wrap the primary feed in non-JSON text while still containing readable menu lines.
+          // Some proxy responses prepend metadata to the primary feed, making JSON.parse fail while leaving readable lines.
           sections = parseHtmlMenuSections(primarySourceText);
         }
       }
