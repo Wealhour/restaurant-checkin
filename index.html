@@ -395,6 +395,8 @@
     const MENU_SKIP_PATTERNS = ['déjeuner', 'dejeuner', 'menu'];
     const WEEKEND_DAYS = ['saturday', 'sunday'];
     const MENU_CACHE_KEY = 'restaurant-checkin-menu-cache-v2';
+    const DAY_ANCHOR_SELECTOR = 'h1, h2, h3, h4, h5, h6, strong, b';
+    const DAY_ANCHOR_TAG_PATTERN = /^(H[1-6]|STRONG|B)$/;
 
     const normalizeText = (line) => String(line ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
     const normalizeSectionName = (line) => normalizeText(String(line ?? '').replace(/[^\p{L}\p{N}\s]/gu, ' '));
@@ -448,6 +450,65 @@
         }
       }
       return lines.slice(currentIndex, endIndex);
+    };
+
+    const isWeekdayMarkerText = (text) => {
+      const normalizedText = normalizeText(text);
+      for (const dayName of ALL_WEEKDAY_NAMES) {
+        if (normalizedText === dayName || normalizedText.startsWith(`${dayName} `)) return true;
+      }
+      return false;
+    };
+
+    const findTodayAnchorElement = (rootNode) => {
+      const { dayEnglish, dayFrench } = getTodayNamesInParis();
+      const todayDayNames = [dayEnglish, dayFrench];
+      for (const element of rootNode.querySelectorAll(DAY_ANCHOR_SELECTOR)) {
+        const normalized = normalizeText(element.textContent || '');
+        if (!normalized) continue;
+        if (todayDayNames.some((dayName) => normalized === dayName || normalized.startsWith(`${dayName} `))) {
+          return element;
+        }
+      }
+      return null;
+    };
+
+    const getNextElementInDocumentOrder = (startElement, rootElement) => {
+      if (startElement.firstElementChild) return startElement.firstElementChild;
+      let cursor = startElement;
+      while (cursor && cursor !== rootElement) {
+        if (cursor.nextElementSibling) return cursor.nextElementSibling;
+        cursor = cursor.parentElement;
+      }
+      return null;
+    };
+
+    const getCurrentDayLinesFromHtmlElements = (source) => {
+      const parser = new DOMParser();
+      const parsedDocument = parser.parseFromString(source, 'text/html');
+      parsedDocument.querySelectorAll('script, style, noscript, iframe, object').forEach((element) => element.remove());
+      const rootElement = parsedDocument.body || parsedDocument.documentElement;
+      const todayAnchorElement = findTodayAnchorElement(rootElement);
+      if (!todayAnchorElement) return [];
+
+      const lines = [];
+      const pushDirectTextLines = (element) => {
+        const directText = Array.from(element.childNodes)
+          .filter((node) => node.nodeType === Node.TEXT_NODE)
+          .map((textNode) => textNode.textContent || '')
+          .join(' ');
+        lines.push(...extractTextLines(directText));
+      };
+
+      let currentElement = todayAnchorElement;
+      while (currentElement) {
+        currentElement = getNextElementInDocumentOrder(currentElement, rootElement);
+        if (!currentElement) break;
+        if (DAY_ANCHOR_TAG_PATTERN.test(currentElement.tagName) && isWeekdayMarkerText(currentElement.textContent || '')) break;
+        pushDirectTextLines(currentElement);
+      }
+
+      return lines;
     };
 
     const getSectionsFromLines = (lines) => {
@@ -664,9 +725,13 @@
       }
 
       const structuredSections = parseStructuredMenuSections(sourceText);
-      const sections = structuredSections.length > 0
-        ? structuredSections
-        : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(sourceText)));
+      let sections = structuredSections;
+      if (sections.length === 0) {
+        const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(sourceText));
+        sections = htmlElementSections.length > 0
+          ? htmlElementSections
+          : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(sourceText)));
+      }
 
       if (sections.length === 0) {
         renderMenuUnavailable('No lunch menu published yet');
