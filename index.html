@@ -740,10 +740,6 @@
         }
         sections = pageSourceText ? parseHtmlMenuSections(pageSourceText) : [];
 
-        if (sections.length === 0 && primarySourceText) {
-          // Some proxy responses prepend metadata to the primary feed, making JSON.parse fail while leaving readable lines.
-          sections = parseHtmlMenuSections(primarySourceText);
-        }
       }
 
       if (sections.length === 0) {
