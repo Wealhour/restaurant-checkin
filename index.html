@@ -390,6 +390,14 @@
     const DAY_ANCHOR_TAG_PATTERN = /^(H[1-6]|STRONG|B)$/;
 
     const normalizeText = (line) => String(line ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const normalizeIsoDate = (value) => {
+      const trimmed = String(value ?? '').trim();
+      const directMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})$/);
+      if (directMatch) return directMatch[1];
+      const prefixedMatch = trimmed.match(/^(\d{4}-\d{2}-\d{2})[T\s]/);
+      if (prefixedMatch) return prefixedMatch[1];
+      return '';
+    };
     const normalizeSectionName = (line) => normalizeText(String(line ?? '').replace(/[^\p{L}\p{N}\s]/gu, ' '));
     const isStructuredMenuSectionName = (name) => typeof name === 'string' && name.includes('—');
     const getMenuCacheDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
@@ -628,7 +636,7 @@
       const sectionsByName = new Map();
 
       braboisRestaurant.menus
-        .filter((menu) => String(menu?.date || '').slice(0, 10) === todayDate)
+        .filter((menu) => normalizeIsoDate(menu?.date) === todayDate)
         .forEach((menu) => {
           const mealEntries = Array.isArray(menu?.meal) ? menu.meal : [];
           mealEntries
