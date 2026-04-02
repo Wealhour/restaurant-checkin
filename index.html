@@ -263,24 +263,12 @@
     const WEATHER_LOCATION = { name: 'Brabois, Nancy', latitude: 48.6937, longitude: 6.1834 };
     const WEATHER_API_URL = `https://api.open-meteo.com/v1/forecast?latitude=${WEATHER_LOCATION.latitude}&longitude=${WEATHER_LOCATION.longitude}&current=temperature_2m,weather_code,is_day&timezone=auto`;
     const MENU_FETCH_TIMEOUT_MILLISECONDS = 6000;
-    const MENU_DISPLAY_NAME = 'CROUS Space Brabois';
-    const MENU_RESTAURANT_ID = 420;
-    const MENU_PRIMARY_SOURCE_URL = 'https://webservices-v2.crous-mobile.fr/feed/nancy.metz/externe/crous-nancy.metz.min.json';
-    const MENU_PRIMARY_SOURCE_HTTP_URL = 'http://webservices-v2.crous-mobile.fr/feed/nancy.metz/externe/crous-nancy.metz.min.json';
-    const MENU_PRIMARY_SOURCE_UNMINIFIED_URL = 'https://webservices-v2.crous-mobile.fr/feed/nancy.metz/externe/crous-nancy.metz.json';
-    const MENU_PRIMARY_SOURCE_UNMINIFIED_HTTP_URL = 'http://webservices-v2.crous-mobile.fr/feed/nancy.metz/externe/crous-nancy.metz.json';
-    const MENU_FALLBACK_SOURCE_URLS = [
-      'https://www.crous-lorraine.fr/restaurant/space-brabois-3/',
-    ];
-    // Keep fallback page sources as an array so we can add additional official pages without changing fetch logic.
-    const MENU_PAGE_SOURCE_URLS = [
-      ...MENU_FALLBACK_SOURCE_URLS,
-    ];
-    const MENU_SOURCE_PROXY_BUILDERS = [
-      (sourceUrl) => `https://r.jina.ai/${sourceUrl}`,
-      (sourceUrl) => `https://api.allorigins.win/raw?url=${encodeURIComponent(sourceUrl)}`,
-      (sourceUrl) => `https://cors.isomorphic-git.org/${sourceUrl}`,
-    ];
+    const MENU_DISPLAY_NAME = 'CROUS (S)pace Brabois';
+    const MENU_GRAPHQL_ENDPOINT = 'https://multi.univ-lorraine.fr/graphql';
+    const MENU_GRAPHQL_OPERATION_NAME = 'crous';
+    const MENU_GRAPHQL_QUERY = 'query crous { restos { title menus { date meal { name foodcategory { name dishes { name } } } } } }';
+    const MENU_RESTAURANT_TITLE = '(S)pace Brabois';
+    const MENU_TARGET_MEAL_NAME = 'midi';
     const MIN_MENU_ITEM_CHAR_LENGTH = 3;
 
     const weatherIcons = {
@@ -397,7 +385,7 @@
     ]);
     const MENU_SKIP_PATTERNS = ['déjeuner', 'dejeuner', 'menu'];
     const WEEKEND_DAYS = ['saturday', 'sunday'];
-    const MENU_CACHE_KEY = 'restaurant-checkin-menu-cache-v2';
+    const MENU_CACHE_KEY = 'restaurant-checkin-menu-cache-v3';
     const DAY_ANCHOR_SELECTOR = 'h1, h2, h3, h4, h5, h6, strong, b';
     const DAY_ANCHOR_TAG_PATTERN = /^(H[1-6]|STRONG|B)$/;
 
@@ -575,34 +563,29 @@
       });
     };
 
-    const MENU_PRIMARY_SOURCE_URLS = [
-      MENU_PRIMARY_SOURCE_URL,
-      MENU_PRIMARY_SOURCE_HTTP_URL,
-      MENU_PRIMARY_SOURCE_UNMINIFIED_URL,
-      MENU_PRIMARY_SOURCE_UNMINIFIED_HTTP_URL,
-    ];
-    const MENU_PRIMARY_SOURCE_CANDIDATES = [
-      // Keep direct requests HTTPS-only to avoid mixed-content blocking on secure pages.
-      ...MENU_PRIMARY_SOURCE_URLS.filter((sourceUrl) => sourceUrl.startsWith('https://')),
-      ...MENU_PRIMARY_SOURCE_URLS.flatMap((sourceUrl) => MENU_SOURCE_PROXY_BUILDERS.map((buildProxyUrl) => buildProxyUrl(sourceUrl))),
-    ];
-    const MENU_PAGE_SOURCE_CANDIDATES = [
-      ...MENU_PAGE_SOURCE_URLS,
-      ...MENU_SOURCE_PROXY_BUILDERS.flatMap((buildProxyUrl) => MENU_PAGE_SOURCE_URLS.map((sourceUrl) => buildProxyUrl(sourceUrl))),
-    ];
-
-    const fetchMenuSourceFromUrl = async (sourceUrl) => {
+    const fetchGraphqlMenuData = async () => {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), MENU_FETCH_TIMEOUT_MILLISECONDS);
       try {
-        const response = await fetch(sourceUrl, { signal: controller.signal });
-        if (!response.ok) return null;
-        const text = await response.text();
-        return text && text.trim().length > 0 ? text : null;
+        const response = await fetch(MENU_GRAPHQL_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            operationName: MENU_GRAPHQL_OPERATION_NAME,
+            query: MENU_GRAPHQL_QUERY,
+            variables: {},
+          }),
+          signal: controller.signal,
+        });
+        if (!response.ok) return [];
+        const parsed = await response.json();
+        return Array.isArray(parsed?.data?.restos) ? parsed.data.restos : [];
       } catch (error) {
         const reason = error instanceof Error ? error.message : String(error);
-        console.error(`Failed to fetch menu source from ${sourceUrl}: ${reason}`);
-        return null;
+        console.error(`Failed to fetch GraphQL menu source: ${reason}`);
+        return [];
       } finally {
         clearTimeout(timeout);
       }
@@ -636,83 +619,42 @@
       }
     };
 
-    const fetchFirstMenuSourceFromCandidates = async (candidates) => {
-      if (candidates.length === 0) return null;
-      return new Promise((resolve) => {
-        let completedRequests = 0;
-        let settled = false;
-        candidates.forEach((sourceUrl) => {
-          fetchMenuSourceFromUrl(sourceUrl)
-            .then((text) => {
-              if (settled || !text) return;
-              settled = true;
-              resolve(text);
-            })
-            .finally(() => {
-              completedRequests += 1;
-              if (!settled && completedRequests === candidates.length) resolve(null);
+    const parseGraphqlMenuSections = (restos) => {
+      if (!Array.isArray(restos)) return [];
+      const braboisRestaurant = restos.find((restaurant) => typeof restaurant?.title === 'string' && restaurant.title.trim() === MENU_RESTAURANT_TITLE);
+      if (!braboisRestaurant || !Array.isArray(braboisRestaurant?.menus)) return [];
+
+      const todayDate = getMenuCacheDate();
+      const sectionsByName = new Map();
+
+      braboisRestaurant.menus
+        .filter((menu) => String(menu?.date || '').slice(0, 10) === todayDate)
+        .forEach((menu) => {
+          const mealEntries = Array.isArray(menu?.meal) ? menu.meal : [];
+          mealEntries
+            .filter((meal) => normalizeText(meal?.name) === MENU_TARGET_MEAL_NAME)
+            .forEach((meal) => {
+              const categoryEntries = Array.isArray(meal?.foodcategory) ? meal.foodcategory : [];
+              categoryEntries.forEach((category) => {
+                const categoryName = typeof category?.name === 'string' && category.name.trim().length > 0
+                  ? category.name.trim()
+                  : 'Menu';
+                const dishEntries = Array.isArray(category?.dishes) ? category.dishes : [];
+                const dishNames = dishEntries
+                  .map((dish) => (typeof dish?.name === 'string' ? dish.name.trim() : ''))
+                  .filter((dishName) => dishName.length > MIN_MENU_ITEM_CHAR_LENGTH);
+                if (dishNames.length === 0) return;
+
+                const currentItems = sectionsByName.get(categoryName) || [];
+                sectionsByName.set(categoryName, [...currentItems, ...dishNames]);
+              });
             });
         });
-      });
-    };
 
-    const getStructuredItems = (dish) => {
-      if (typeof dish?.name === 'string') return [dish.name];
-      if (typeof dish === 'string') return [dish];
-      if (Array.isArray(dish?.items)) return dish.items.filter((item) => typeof item === 'string');
-      return [];
-    };
-
-    const parseStructuredMenuSections = (sourceText) => {
-      try {
-        const sanitizedSourceText = String(sourceText ?? '')
-          .replace(/^\uFEFF/, '')
-          // Keep JSON whitespace (\t, \n, \r) but drop other control bytes that break parsing.
-          .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]+/g, '');
-        const parsed = JSON.parse(sanitizedSourceText);
-        if (!Array.isArray(parsed?.restaurants)) return [];
-
-        const braboisRestaurant = parsed.restaurants.find((restaurant) => {
-          if (Number(restaurant?.id) === MENU_RESTAURANT_ID) return true;
-          const normalizedTitle = normalizeText(restaurant?.title);
-          return normalizedTitle.includes('space') && normalizedTitle.includes('brabois');
-        });
-        if (!braboisRestaurant || !Array.isArray(braboisRestaurant?.menus)) return [];
-
-        const todayDate = getMenuCacheDate();
-        const todayMenus = braboisRestaurant.menus.filter((menu) => String(menu?.date || '').slice(0, 10) === todayDate);
-        if (todayMenus.length === 0) return [];
-
-        const sections = [];
-        todayMenus.forEach((menu) => {
-          const mealEntries = Array.isArray(menu?.meal) ? menu.meal : (Array.isArray(menu?.meals) ? menu.meals : []);
-          mealEntries.forEach((meal) => {
-            const mealName = typeof meal?.name === 'string' ? meal.name.trim() : 'Menu';
-            const categoryEntries = Array.isArray(meal?.foodcategory) ? meal.foodcategory : (Array.isArray(meal?.plats) ? meal.plats : []);
-            categoryEntries.forEach((category) => {
-              const categoryName = typeof category?.name === 'string' ? category.name.trim() : '';
-              const sectionName = categoryName ? `${mealName} — ${categoryName}` : mealName;
-              const dishEntries = Array.isArray(category?.dishes) ? category.dishes : [];
-              const items = dishEntries
-                .flatMap(getStructuredItems)
-                .map((dishName) => dishName.trim())
-                .filter((dishName) => dishName.length > MIN_MENU_ITEM_CHAR_LENGTH);
-              if (items.length > 0) sections.push({ name: sectionName, items });
-            });
-          });
-        });
-        return sections;
-      } catch {
-        return [];
-      }
-    };
-
-    const parseHtmlMenuSections = (sourceText) => {
-      if (!sourceText) return [];
-      const htmlElementSections = getSectionsFromLines(getCurrentDayLinesFromHtmlElements(sourceText));
-      return htmlElementSections.length > 0
-        ? htmlElementSections
-        : getSectionsFromLines(getCurrentDayLinesOrAll(parseMenuTextLines(sourceText)));
+      return Array.from(sectionsByName.entries()).map(([name, items]) => ({
+        name,
+        items: Array.from(new Set(items)),
+      }));
     };
 
     (async () => {
@@ -728,19 +670,12 @@
         return;
       }
 
-      const primarySourceText = await fetchFirstMenuSourceFromCandidates(MENU_PRIMARY_SOURCE_CANDIDATES);
-      const structuredSections = primarySourceText ? parseStructuredMenuSections(primarySourceText) : [];
-      let sections = structuredSections;
-
-      if (sections.length === 0) {
-        const pageSourceText = await fetchFirstMenuSourceFromCandidates(MENU_PAGE_SOURCE_CANDIDATES);
-        if (!primarySourceText && !pageSourceText) {
-          renderMenuUnavailable('Menu source unavailable');
-          return;
-        }
-        sections = pageSourceText ? parseHtmlMenuSections(pageSourceText) : [];
-
+      const restos = await fetchGraphqlMenuData();
+      if (restos.length === 0) {
+        renderMenuUnavailable('Menu source unavailable');
+        return;
       }
+      const sections = parseGraphqlMenuSections(restos);
 
       if (sections.length === 0) {
         renderMenuUnavailable('No lunch menu published yet');
