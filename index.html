@@ -269,6 +269,7 @@
     const MENU_GRAPHQL_QUERY = 'query crous { restos { title menus { date meal { name foodcategory { name dishes { name } } } } } }';
     const MENU_RESTAURANT_TITLE = '(S)pace Brabois';
     const MENU_TARGET_MEAL_NAME = 'midi';
+    const MENU_WEBSITE_URL = 'https://www.crous-lorraine.fr/restaurant/space-brabois-3/';
     const MIN_MENU_ITEM_CHAR_LENGTH = 3;
 
     const weatherIcons = {
@@ -667,14 +668,14 @@
 
     (() => {
       const menuWebsiteLink = document.createElement('a');
-      menuWebsiteLink.href = 'https://www.crous-lorraine.fr/restaurant/space-brabois-3/';
+      menuWebsiteLink.href = MENU_WEBSITE_URL;
       menuWebsiteLink.target = '_blank';
       menuWebsiteLink.rel = 'noopener noreferrer';
       menuWebsiteLink.textContent = 'Open today’s menu on the student restaurant website';
 
       menuSubtitle.textContent = 'Today’s menu is available on the official website.';
       menuContent.className = 'menu-empty';
-      menuContent.innerHTML = '';
+      menuContent.textContent = '';
       menuContent.appendChild(menuWebsiteLink);
     })();
 
